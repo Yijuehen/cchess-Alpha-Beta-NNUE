@@ -37,9 +37,10 @@ def get_feature_index(pos: int, piece: int) -> int:
     Returns:
         Feature index (0-1259)
     """
-    piece_type = abs(piece) - 1  # 0-6
+    # Convert to Python int to avoid numpy int8 overflow
+    piece_type = int(abs(piece)) - 1  # 0-6
     color = 0 if is_red(piece) else 1  # 0=Red, 1=Black
-    return pos * 14 + piece_type * 2 + color
+    return int(pos) * 14 + piece_type * 2 + color
 
 
 def extract_features(board: np.ndarray) -> np.ndarray:

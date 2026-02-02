@@ -27,6 +27,9 @@ from ..nnue.nue_network import NNUE
 from ..search.alphabeta import (
     search, iterative_deepening, SearchInfo
 )
+from ..utils.logger import get_logger
+
+logger = get_logger("engine")
 
 
 class XiangqiEngine:
@@ -60,6 +63,12 @@ class XiangqiEngine:
 
         # Game state
         self.side_to_move = 1  # Red starts
+        self.board_history = []  # Store board states for undo
+
+        logger.info(
+            f"XiangqiEngine initialized: nnue={nnue_path is not None}, "
+            f"depth={self.depth}"
+        )
 
     def set_position(self, board_str: str) -> None:
         """
@@ -68,10 +77,16 @@ class XiangqiEngine:
         Args:
             board_str: 64-character board encoding
         """
-        self.board = parse_board(board_str)
+        try:
+            self.board = parse_board(board_str)
 
-        if not validate_board(self.board):
-            raise ValueError("Invalid board position")
+            if not validate_board(self.board):
+                raise ValueError("Invalid board position")
+
+            logger.debug(f"Position set: {board_str[:16]}...")
+        except Exception as e:
+            logger.error(f"Failed to set position: {e}")
+            raise
 
     def get_position(self) -> str:
         """
@@ -86,6 +101,7 @@ class XiangqiEngine:
         """Reset to initial position."""
         self.board = create_initial_board()
         self.side_to_move = 1
+        self.board_history = []  # Clear history
 
     def set_fen(self, fen: str) -> None:
         """
@@ -120,7 +136,11 @@ class XiangqiEngine:
 
             # Check if move is legal
             if not is_legal(self.board, move, self.side_to_move):
+                logger.debug(f"Illegal move attempted: {move_str}")
                 return False
+
+            # Save state for undo (board copy and side_to_move)
+            self.board_history.append((self.board.copy(), self.side_to_move))
 
             # Make the move
             self.board = make_move(self.board, move)
@@ -128,22 +148,31 @@ class XiangqiEngine:
             # Switch sides
             self.side_to_move = -self.side_to_move
 
+            logger.debug(f"Move made: {move_str}, side={self.side_to_move}")
             return True
 
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Move failed: {move_str}, error={e}")
             return False
 
-    def undo_move(self, move_str: str) -> bool:
+    def undo_move(self, move_str: str = None) -> bool:
         """
-        Undo a move (not yet implemented).
+        Undo the last move.
 
         Args:
-            move_str: Move to undo
+            move_str: Move to undo (optional, not used but kept for compatibility)
 
         Returns:
-            True if successful
+            True if successful, False if no history to undo
         """
-        raise NotImplementedError("Undo not yet implemented")
+        if not self.board_history:
+            logger.debug("No moves to undo")
+            return False
+
+        # Restore previous state
+        self.board, self.side_to_move = self.board_history.pop()
+        logger.debug(f"Undo performed, side={self.side_to_move}")
+        return True
 
     def search(self, depth: Optional[int] = None) -> Tuple[int, str]:
         """
@@ -158,21 +187,27 @@ class XiangqiEngine:
         if depth is None:
             depth = self.depth
 
+        logger.info(f"Search started: depth={depth}, side={self.side_to_move}")
+
         # Clear search info
         self.search_info = SearchInfo()
 
-        # Search
+        # Search - PASS side_to_move to ensure engine moves correct color
         score, best_move = iterative_deepening(
             self.board,
             depth,
             self.evaluator,
-            self.search_info
+            self.search_info,
+            self.side_to_move  # CRITICAL: Pass current side to move
         )
 
         if best_move is None:
+            logger.warning("No legal moves found")
             return score, ""
 
         move_str = format_move(best_move)
+        logger.info(f"Search result: move={move_str}, score={score}")
+
         return score, move_str
 
     def analyze(self, depth: Optional[int] = None) -> List[Tuple[str, int]]:

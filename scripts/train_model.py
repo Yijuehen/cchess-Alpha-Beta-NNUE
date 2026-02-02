@@ -3,35 +3,95 @@
 Training script for NNUE model.
 
 Trains a neural network evaluation function on Chinese Chess position data.
+Supports configuration files and command-line arguments.
 """
 
 import argparse
 from pathlib import Path
+import yaml
 
 # Add src to path for imports
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.training.trainer import train_model
+from src.utils.logger import setup_logging, get_logger
+
+
+def load_config(config_path):
+    """Load configuration from YAML file."""
+    with open(config_path, 'r') as f:
+        return yaml.safe_load(f)
+
+
+def merge_config_with_args(config, args):
+    """Merge config file with command-line arguments (CLI args take precedence)."""
+    result = {}
+
+    # Start with config file values
+    if config:
+        # Flatten nested config structure
+        if 'data' in config:
+            result.update({f'data_{k}': v for k, v in config['data'].items()})
+        if 'training' in config:
+            result.update({k: v for k, v in config['training'].items()})
+        if 'model' in config:
+            result.update(config['model'])
+        if 'loss' in config:
+            result['loss'] = config['loss']['type']
+        if 'validation' in config:
+            result['validation_ratio'] = config['validation']['ratio']
+        if 'checkpointing' in config:
+            result['no_checkpoints'] = not config['checkpointing']['enabled']
+            if config['checkpointing']['enabled']:
+                result['checkpoint_dir'] = config['checkpointing']['directory']
+        if 'logging' in config:
+            result['log_level'] = config['logging']['level']
+            result['log_dir'] = config['logging']['log_dir']
+
+    # Override with CLI args (convert argparse Namespace to dict, filtering out None values)
+    args_dict = {k: v for k, v in vars(args).items() if v is not None and k != 'config'}
+
+    # Map CLI arg names to internal names
+    arg_mapping = {
+        'data': 'csv_path',
+        'output': 'output_path',
+    }
+
+    for cli_key, internal_key in arg_mapping.items():
+        if cli_key in args_dict:
+            args_dict[internal_key] = args_dict.pop(cli_key)
+
+    result.update(args_dict)
+    return result
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Train NNUE model on Chinese Chess data"
+        description="Train NNUE model on Chinese Chess data",
+        epilog="Example: python scripts/train_model.py --config config/test_config.yaml"
+    )
+
+    # Configuration file
+    parser.add_argument(
+        '--config',
+        type=str,
+        default=None,
+        help='Path to YAML configuration file (overrides defaults, overridden by CLI args)'
     )
 
     # Data arguments
     parser.add_argument(
         '--data',
         type=str,
-        default='data/chess.csv',
+        default=None,
         help='Path to training CSV file'
     )
 
     parser.add_argument(
         '--output',
         type=str,
-        default='models/nnue_weights.pkl',
+        default=None,
         help='Path to save trained model'
     )
 
@@ -46,14 +106,14 @@ def main():
     parser.add_argument(
         '--input-size',
         type=int,
-        default=1260,
+        default=None,
         help='NNUE input size'
     )
 
     parser.add_argument(
         '--hidden-size',
         type=int,
-        default=256,
+        default=None,
         help='NNUE hidden layer size'
     )
 
@@ -61,28 +121,28 @@ def main():
     parser.add_argument(
         '--epochs',
         type=int,
-        default=10,
+        default=None,
         help='Number of training epochs'
     )
 
     parser.add_argument(
         '--batch-size',
         type=int,
-        default=32,
+        default=None,
         help='Training batch size'
     )
 
     parser.add_argument(
         '--learning-rate',
         type=float,
-        default=0.01,
+        default=None,
         help='Learning rate'
     )
 
     parser.add_argument(
         '--loss',
         type=str,
-        default='mse',
+        default=None,
         choices=['mse', 'huber', 'scaled_mse'],
         help='Loss function'
     )
@@ -90,7 +150,7 @@ def main():
     parser.add_argument(
         '--validation-ratio',
         type=float,
-        default=0.1,
+        default=None,
         help='Validation split ratio'
     )
 
@@ -98,66 +158,136 @@ def main():
     parser.add_argument(
         '--checkpoint-dir',
         type=str,
-        default='models/checkpoints',
+        default=None,
         help='Directory to save checkpoints'
     )
 
     parser.add_argument(
         '--no-checkpoints',
         action='store_true',
+        default=None,
         help='Disable checkpoint saving'
+    )
+
+    # Logging
+    parser.add_argument(
+        '--log-level',
+        type=str,
+        default=None,
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+        help='Logging level'
+    )
+
+    parser.add_argument(
+        '--log-dir',
+        type=str,
+        default=None,
+        help='Log directory'
     )
 
     args = parser.parse_args()
 
-    # Create checkpoint directory
-    checkpoint_dir = None if args.no_checkpoints else args.checkpoint_dir
+    # Load configuration
+    config = None
+    if args.config:
+        config = load_config(args.config)
+        print(f"Loaded config from: {args.config}")
 
-    # Train model
-    print("=" * 60)
-    print("NNUE Training")
-    print("=" * 60)
-    print(f"Data: {args.data}")
-    print(f"Output: {args.output}")
-    print(f"Architecture: {args.input_size} → {args.hidden_size} → 1")
-    print(f"Epochs: {args.epochs}")
-    print(f"Batch size: {args.batch_size}")
-    print(f"Learning rate: {args.learning_rate}")
-    print(f"Loss function: {args.loss}")
-    print(f"Max samples: {args.max_samples if args.max_samples else 'All'}")
-    print("=" * 60)
+    # Merge config with CLI args (CLI args take precedence)
+    merged = merge_config_with_args(config, args)
+
+    # Apply defaults for any missing values
+    defaults = {
+        'csv_path': 'data/chess.csv',
+        'output_path': 'models/nnue_weights.pkl',
+        'input_size': 1260,
+        'hidden_size': 256,
+        'epochs': 10,
+        'batch_size': 32,
+        'learning_rate': 0.01,
+        'loss': 'mse',
+        'validation_ratio': 0.1,
+        'checkpoint_dir': 'models/checkpoints',
+        'no_checkpoints': False,
+        'log_level': 'INFO',
+        'log_dir': 'logs/training',
+        'max_samples': None,
+    }
+
+    for key, value in defaults.items():
+        if key not in merged or merged[key] is None:
+            merged[key] = value
+
+    # Setup logging
+    setup_logging(
+        name="training",
+        log_dir=merged['log_dir'],
+        level=merged['log_level']
+    )
+    logger = get_logger("training")
+
+    # Create checkpoint directory
+    checkpoint_dir = None if merged['no_checkpoints'] else merged['checkpoint_dir']
+
+    # Log configuration
+    logger.info("=" * 60)
+    logger.info("NNUE Training Started")
+    logger.info("=" * 60)
+    logger.info(f"Config source: {'Config file' if config else 'Command line/defaults'}")
+    logger.info(f"Data: {merged['csv_path']}")
+    logger.info(f"Output: {merged['output_path']}")
+    logger.info(f"Architecture: {merged['input_size']} → {merged['hidden_size']} → 1")
+    logger.info(f"Epochs: {merged['epochs']}")
+    logger.info(f"Batch size: {merged['batch_size']}")
+    logger.info(f"Learning rate: {merged['learning_rate']}")
+    logger.info(f"Loss function: {merged['loss']}")
+    logger.info(f"Max samples: {merged['max_samples'] if merged['max_samples'] else 'All'}")
+    logger.info("=" * 60)
+
+    print()
+    print("Starting training...")
+    print(f"Data: {merged['csv_path']}")
+    print(f"Output: {merged['output_path']}")
     print()
 
     try:
         network = train_model(
-            csv_path=args.data,
-            output_path=args.output,
-            input_size=args.input_size,
-            hidden_size=args.hidden_size,
-            learning_rate=args.learning_rate,
-            epochs=args.epochs,
-            batch_size=args.batch_size,
-            max_samples=args.max_samples,
-            validation_ratio=args.validation_ratio,
-            loss_fn=args.loss,
+            csv_path=merged['csv_path'],
+            output_path=merged['output_path'],
+            input_size=merged['input_size'],
+            hidden_size=merged['hidden_size'],
+            learning_rate=merged['learning_rate'],
+            epochs=merged['epochs'],
+            batch_size=merged['batch_size'],
+            max_samples=merged['max_samples'],
+            validation_ratio=merged['validation_ratio'],
+            loss_fn=merged['loss'],
             checkpoint_dir=checkpoint_dir,
             verbose=True
         )
 
+        logger.info("=" * 60)
+        logger.info("Training completed successfully!")
+        logger.info(f"Model saved to: {merged['output_path']}")
+        logger.info("=" * 60)
+
         print()
         print("=" * 60)
         print("Training completed successfully!")
-        print(f"Model saved to: {args.output}")
+        print(f"Model saved to: {merged['output_path']}")
+        print(f"Logs: {merged['log_dir']}/training.log")
         print("=" * 60)
 
         return 0
 
     except KeyboardInterrupt:
+        logger.warning("Training interrupted by user")
         print("\nTraining interrupted by user")
         return 1
 
     except Exception as e:
-        print(f"\nError during training: {e}")
+        logger.error(f"Training failed: {e}", exc_info=True)
+        print(f"\nError: {e}")
         import traceback
         traceback.print_exc()
         return 1

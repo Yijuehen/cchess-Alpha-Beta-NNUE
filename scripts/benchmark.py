@@ -7,6 +7,7 @@ Tests search performance and plays test games.
 
 import argparse
 import time
+import json
 from pathlib import Path
 
 # Add src to path
@@ -15,6 +16,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.engine.xiangqi_engine import create_engine
 from src.board.board_representation import create_initial_board
+from src.utils.logger import setup_logging, get_logger
+
+logger = get_logger("benchmark")
 
 
 def benchmark_search(depth: int = 8, time_limit: float = 5.0):
@@ -22,6 +26,8 @@ def benchmark_search(depth: int = 8, time_limit: float = 5.0):
     print("=" * 60)
     print(f"Search Benchmark (depth={depth})")
     print("=" * 60)
+
+    logger.info(f"Starting search benchmark: depth={depth}")
 
     engine = create_engine()
     engine.set_search_depth(depth)
@@ -34,13 +40,37 @@ def benchmark_search(depth: int = 8, time_limit: float = 5.0):
     elapsed = time.time() - start_time
     info = engine.get_search_info()
 
+    nps = info['nodes'] / elapsed if elapsed > 0 else 0
+
     print(f"Best move: {move}")
     print(f"Score: {score}")
     print(f"Nodes searched: {info['nodes']}")
     print(f"Time: {elapsed:.2f}s")
-    print(f"Nodes per second: {info['nodes'] / elapsed:.0f}")
+    print(f"Nodes per second: {nps:.0f}")
 
-    return info['nodes'] / elapsed
+    logger.info(
+        f"Search benchmark complete: depth={depth}, nps={nps:.0f}, "
+        f"move={move}, score={score}"
+    )
+
+    # Save results to file
+    results = {
+        'depth': depth,
+        'nodes': info['nodes'],
+        'time': elapsed,
+        'nps': nps,
+        'move': move,
+        'score': score
+    }
+
+    results_file = Path('logs/benchmark_results.json')
+    results_file.parent.mkdir(exist_ok=True)
+    with open(results_file, 'w') as f:
+        json.dump(results, f, indent=2)
+
+    logger.info(f"Results saved to: {results_file}")
+
+    return nps
 
 
 def benchmark_perft(max_depth: int = 5):

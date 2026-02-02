@@ -1,0 +1,38 @@
+
+# Training Configuration - Full Production Run
+# This config is for complete training on all data
+
+# Data paths
+data:
+  csv_path: "data/chess.csv"
+  output_path: "models/nnue_weights.pkl"
+
+# Training parameters
+training:
+  max_samples: null        # null = use all samples
+  epochs: 10
+  batch_size: 32
+  learning_rate: 0.01
+
+# Model architecture
+model:
+  input_size: 1260
+  hidden_size: 256
+
+# Loss function
+loss:
+  type: "mse"              # Options: mse, huber, scaled_mse
+
+# Validation
+validation:
+  ratio: 0.1               # 10% for validation
+
+# Checkpointing
+checkpointing:
+  enabled: true
+  directory: "models/checkpoints"
+
+# Logging
+logging:
+  level: "INFO"            # Options: DEBUG, INFO, WARNING, ERROR
+  log_dir: "logs/training"

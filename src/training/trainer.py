@@ -10,8 +10,11 @@ from typing import Optional, Callable
 from tqdm import tqdm
 
 from ..nnue.nue_network import NNUE, NNUETrainer
+from ..utils.logger import get_logger
 from .dataset import BatchDataLoader, create_train_validation_split
 from .loss import mse_loss, get_loss_function
+
+logger = get_logger("training")
 
 
 class Trainer:
@@ -41,11 +44,17 @@ class Trainer:
         self.trainer = NNUETrainer(network, learning_rate)
         self.loss_fn_name = loss_fn
         self.loss_fn, self.loss_grad_fn = get_loss_function(loss_fn)
+        self.logger = get_logger("training")
 
         # Training history
         self.train_losses = []
         self.val_losses = []
         self.best_val_loss = float('inf')
+
+        self.logger.info(
+            f"Initialized trainer: lr={learning_rate}, "
+            f"loss_fn={loss_fn}, device={device}"
+        )
 
     def compute_validation_loss(
         self,
@@ -53,8 +62,13 @@ class Trainer:
         val_targets: np.ndarray
     ) -> float:
         """Compute validation loss."""
+        self.logger.debug(
+            f"Computing validation loss: {len(val_features)} samples"
+        )
         predictions = self.network.forward_batch(val_features)
-        return self.loss_fn(predictions, val_targets)
+        loss = self.loss_fn(predictions, val_targets)
+        self.logger.debug(f"Validation loss: {loss:.4f}")
+        return loss
 
     def train(
         self,
@@ -90,10 +104,11 @@ class Trainer:
         # Create validation split if needed
         if val_csv_path is None:
             if verbose:
-                print("Creating train/validation split...")
+                self.logger.info("Creating train/validation split...")
             train_csv_path, val_csv_path = create_train_validation_split(
                 train_csv_path, validation_ratio
             )
+            self.logger.info(f"Split created: train={train_csv_path}, val={val_csv_path}")
 
         # Create data loaders
         train_loader = BatchDataLoader(
@@ -112,7 +127,7 @@ class Trainer:
 
         # Load validation data into memory
         if verbose:
-            print("Loading validation data...")
+            self.logger.info("Loading validation data...")
 
         val_features_list = []
         val_targets_list = []
@@ -123,39 +138,51 @@ class Trainer:
         if val_features_list:
             val_features = np.vstack(val_features_list)
             val_targets = np.concatenate(val_targets_list)
+            self.logger.info(f"Validation data loaded: {len(val_features)} samples")
         else:
             val_features = None
             val_targets = None
+            self.logger.warning("No validation data available")
 
         # Training loop
-        if verbose:
-            print(f"Training for {epochs} epochs...")
-            print(f"Learning rate: {self.trainer.learning_rate}")
-            print(f"Batch size: {batch_size}")
-            print(f"Loss function: {self.loss_fn_name}")
+        self.logger.info("=" * 60)
+        self.logger.info(f"Starting training: {epochs} epochs")
+        self.logger.info(f"Learning rate: {self.trainer.learning_rate}")
+        self.logger.info(f"Batch size: {batch_size}")
+        self.logger.info(f"Loss function: {self.loss_fn_name}")
+        self.logger.info("=" * 60)
 
         patience_counter = 0
 
         for epoch in range(epochs):
             # Training
             epoch_losses = []
+            self.logger.info(f"Epoch {epoch+1}/{epochs} started")
             train_iterator = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}") if verbose else train_loader
 
-            for batch_features, batch_targets in train_iterator:
+            for batch_idx, (batch_features, batch_targets) in enumerate(train_iterator):
                 loss = self.trainer.update_step(batch_features, batch_targets)
                 epoch_losses.append(loss)
+
+                # Log batch progress periodically
+                if batch_idx > 0 and batch_idx % 100 == 0:
+                    self.logger.debug(f"  Batch {batch_idx}: loss={loss:.4f}")
 
             # Compute average training loss
             train_loss = np.mean(epoch_losses)
             self.train_losses.append(train_loss)
+
+            self.logger.info(f"Epoch {epoch+1}/{epochs} completed: train_loss={train_loss:.4f}")
 
             # Validation
             if val_features is not None:
                 val_loss = self.compute_validation_loss(val_features, val_targets)
                 self.val_losses.append(val_loss)
 
-                if verbose:
-                    print(f"Epoch {epoch+1}: train_loss={train_loss:.2f}, val_loss={val_loss:.2f}")
+                self.logger.info(
+                    f"  Validation: val_loss={val_loss:.4f}, "
+                    f"best={self.best_val_loss:.4f}"
+                )
 
                 # Check for improvement
                 if val_loss < self.best_val_loss:
@@ -166,27 +193,34 @@ class Trainer:
                     if checkpoint_dir:
                         checkpoint_path = Path(checkpoint_dir) / "best_model.pkl"
                         self.network.save(str(checkpoint_path))
-                        if verbose:
-                            print(f"  → Saved best model (val_loss={val_loss:.2f})")
+                        self.logger.info(
+                            f"  → Saved best model (val_loss={val_loss:.4f})"
+                        )
                 else:
                     patience_counter += 1
+                    self.logger.debug(
+                        f"  No improvement ({patience_counter}/{early_stopping_patience})"
+                    )
 
                 # Early stopping
                 if patience_counter >= early_stopping_patience:
-                    if verbose:
-                        print(f"Early stopping at epoch {epoch+1}")
+                    self.logger.info(
+                        f"Early stopping triggered at epoch {epoch+1}"
+                    )
                     break
             else:
                 self.val_losses.append(train_loss)
-                if verbose:
-                    print(f"Epoch {epoch+1}: train_loss={train_loss:.2f}")
+
+        self.logger.info("=" * 60)
+        self.logger.info("Training completed")
+        self.logger.info(f"Best validation loss: {self.best_val_loss:.4f}")
+        self.logger.info("=" * 60)
 
         # Save final model
         if checkpoint_dir:
             final_path = Path(checkpoint_dir) / "final_model.pkl"
             self.network.save(str(final_path))
-            if verbose:
-                print(f"Saved final model to {final_path}")
+            self.logger.info(f"Saved final model to {final_path}")
 
         return {
             'train_losses': self.train_losses,
@@ -252,10 +286,11 @@ def train_model(
 
     # Save final model
     network.save(output_path)
+    logger.info(f"Model saved to: {output_path}")
 
     if verbose:
         print(f"\nTraining complete!")
-        print(f"Best validation loss: {trainer.best_val_loss:.2f}")
+        print(f"Best validation loss: {trainer.best_val_loss:.4f}")
         print(f"Model saved to: {output_path}")
 
     return network

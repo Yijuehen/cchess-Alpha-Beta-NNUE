@@ -28,6 +28,18 @@ A Python-based Chinese Chess (Xiangqi) engine combining traditional Alpha-Beta s
   - Validation and early stopping
   - Checkpointing
 
+- **Logging System**:
+  - Structured logging with multiple levels (DEBUG, INFO, WARNING, ERROR)
+  - File logging with automatic rotation (10MB per file, 5 backups)
+  - Console and JSON format options
+  - Module-specific loggers
+
+- **Background Tasks**:
+  - Train models in background threads
+  - Progress tracking and status monitoring
+  - Async search operations
+  - Batch position analysis
+
 ## Installation
 
 ```bash
@@ -102,6 +114,32 @@ python scripts/train_model.py \
     --epochs 3
 ```
 
+### Playing Against the Engine
+
+**Command-Line Interface:**
+```bash
+# Play against the NNUE engine in terminal
+python play_game.py
+```
+
+**Graphical Interface (GUI):**
+```bash
+# Play with a visual board interface
+python play_game_gui.py
+```
+
+The GUI features:
+- Visual Chinese Chess board with traditional pieces
+- Click-to-move interface
+- Move validation and highlighting
+- Engine score display
+- Move history panel
+- Undo move functionality
+- Check/checkmate detection
+
+**You play Red (先手)** - pieces at the bottom, move first
+**Engine plays Black (後手)** - pieces at the top
+
 ### Benchmarking
 
 ```bash
@@ -126,6 +164,121 @@ pytest tests/test_board.py -v
 
 # Run with coverage
 pytest tests/ --cov=src --cov-report=html
+```
+
+## Configuration Files
+
+You can use YAML configuration files to manage training parameters instead of specifying them on the command line.
+
+### Example Configuration Files
+
+Two example configurations are provided:
+
+**`config/test_config.yaml`** - Quick testing configuration
+```yaml
+# Quick test with limited samples
+data:
+  csv_path: "data/chess.csv"
+  output_path: "models/test_model.pkl"
+
+training:
+  max_samples: 1000
+  epochs: 1
+  batch_size: 32
+  learning_rate: 0.01
+
+model:
+  input_size: 1260
+  hidden_size: 256
+
+loss:
+  type: "mse"  # Options: mse, huber, scaled_mse
+
+validation:
+  ratio: 0.1
+
+checkpointing:
+  enabled: false
+  directory: "models/checkpoints"
+
+logging:
+  level: "INFO"
+  log_dir: "logs/training"
+```
+
+**`config/full_config.yaml`** - Full production training
+```yaml
+# Complete training on all data
+data:
+  csv_path: "data/chess.csv"
+  output_path: "models/nnue_weights.pkl"
+
+training:
+  max_samples: null  # null = use all samples
+  epochs: 10
+  batch_size: 32
+  learning_rate: 0.01
+
+# ... same structure as test_config.yaml
+```
+
+### Using Configuration Files
+
+**Train with config file:**
+```bash
+# Use test configuration
+python scripts/train_model.py --config config/test_config.yaml
+
+# Use full configuration
+python scripts/train_model.py --config config/full_config.yaml
+```
+
+**Override config values with command-line arguments:**
+```bash
+# Use config but override specific parameters
+python scripts/train_model.py \
+    --config config/test_config.yaml \
+    --epochs 5 \
+    --max-samples 5000
+```
+
+**Background training with config:**
+```bash
+# Start background training with config
+python scripts/train_background.py \
+    --config config/full_config.yaml \
+    --task-id training_1 \
+    --wait
+```
+
+### Creating Custom Configurations
+
+You can create your own configuration files by copying and modifying the examples:
+
+```bash
+# Copy test config
+cp config/test_config.yaml config/my_config.yaml
+
+# Edit parameters
+nano config/my_config.yaml  # or use your preferred editor
+
+# Use your config
+python scripts/train_model.py --config config/my_config.yaml
+```
+
+### Configuration File Priority
+
+When both config file and command-line arguments are provided:
+1. Command-line arguments take precedence (highest priority)
+2. Config file values are used as defaults
+3. Built-in defaults are used if neither is provided
+
+Example:
+```bash
+# Config has epochs=10, but CLI overrides to 5
+python scripts/train_model.py \
+    --config config/full_config.yaml \
+    --epochs 5  # This value will be used instead of config's 10
 ```
 
 ## Data Format
@@ -218,6 +371,200 @@ network = train_model(
     loss_fn="mse"
 )
 ```
+
+---
+
+## Logging
+
+The engine uses a structured logging system with multiple levels and automatic file rotation.
+
+### Configuration
+
+```python
+from src.utils.logger import setup_logging, get_logger
+
+# Setup logging for your application
+setup_logging(
+    name="my_app",
+    log_dir="logs",
+    level="INFO",
+    console=True,
+    file=True,
+    json_format=False
+)
+
+# Get a logger for your module
+logger = get_logger("my_module")
+logger.info("Application started")
+```
+
+### Log Levels
+
+- **DEBUG**: Detailed diagnostic information
+- **INFO**: General information about progress
+- **WARNING**: Warning messages for non-critical issues
+- **ERROR**: Error messages for failures
+- **CRITICAL**: Critical errors that prevent operation
+
+### Usage Examples
+
+```python
+from src.utils.logger import get_logger
+
+logger = get_logger("training")
+
+logger.info("Training started")
+logger.debug(f"Epoch {epoch}: loss={loss:.4f}")
+logger.warning("Skipping invalid sample")
+logger.error("Failed to save model", exc_info=True)
+```
+
+### Log Files
+
+Logs are automatically written to `logs/` directory:
+- `logs/training/training.log` - Training logs
+- `logs/benchmark/benchmark.log` - Benchmark logs
+- `logs/background_training/background_training.log` - Background training logs
+
+Features:
+- Automatic rotation at 10MB per file
+- Keeps 5 backup files
+- UTF-8 encoding for Chinese characters
+
+### Viewing Logs
+
+```bash
+# View latest logs
+tail -f logs/training/training.log
+
+# Search for errors
+grep "ERROR" logs/training/training.log
+
+# View with JSON parser (if using JSON format)
+jq '.' logs/training/training.log
+```
+
+---
+
+## Background Tasks
+
+Run long-running operations in background threads with progress tracking.
+
+### Background Training
+
+Train models without blocking the main thread:
+
+```python
+from src.training.background_trainer import (
+    train_model_background,
+    check_training_status,
+    wait_for_training
+)
+
+# Start training in background
+task_id = train_model_background(
+    csv_path="data/chess.csv",
+    output_path="models/nnue.pkl",
+    task_id="my_training_job",
+    epochs=10,
+    batch_size=32
+)
+
+# Check status
+status = check_training_status(task_id)
+print(f"Status: {status.status.value}")
+print(f"Progress: {status.progress:.1%}")
+print(f"Elapsed: {status.elapsed_time():.1f}s")
+
+# Wait for completion (optional)
+model = wait_for_training(task_id, timeout=None)
+```
+
+### Command Line Tools
+
+**Start Background Training:**
+```bash
+python scripts/train_background.py \
+    --data data/chess.csv \
+    --output models/nnue.pkl \
+    --task-id training_1 \
+    --epochs 10
+
+# The training runs in background
+# You can check its status separately
+```
+
+**Check Task Status:**
+```bash
+python scripts/background_status.py --task-id training_1
+
+# Output:
+# Task: training_1
+# Status: running
+# Progress: 45.0%
+# Elapsed: 123.5s
+```
+
+**Wait for Completion:**
+```bash
+python scripts/background_status.py \
+    --task-id training_1 \
+    --wait
+```
+
+### Background Batch Analysis
+
+Analyze multiple positions in background:
+
+```python
+from src.engine.background_engine import BackgroundEngine
+
+engine = BackgroundEngine()
+
+# Analyze multiple positions
+positions = [
+    "0919293949596979891777062646668600102030405060708012720323436383",
+    # ... more positions
+]
+
+task_id = engine.analyze_batch_background(
+    positions=positions,
+    depth=4,
+    task_id="batch_analysis_1"
+)
+
+# Check results later
+status = engine.get_task_status("batch_analysis_1")
+results = status.result  # List of analysis results
+```
+
+### Task States
+
+Tasks can have the following states:
+- **pending**: Task is queued
+- **running**: Task is currently executing
+- **completed**: Task finished successfully
+- **failed**: Task failed with an error
+- **cancelled**: Task was cancelled
+
+### Management Functions
+
+```python
+from src.utils.background import get_background_manager
+
+manager = get_background_manager()
+
+# List all tasks
+tasks = manager.list_tasks()
+
+# Cleanup completed tasks
+manager.cleanup_task(task_id)
+
+# Wait for specific timeout
+result = manager.wait_for_task(task_id, timeout=60.0)
+```
+
+---
 
 ## Performance
 

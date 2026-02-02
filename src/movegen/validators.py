@@ -122,6 +122,8 @@ def is_attacked_by_rook(board: np.ndarray, row: int, col: int, by_color: int) ->
             if board[r, c] == rook_piece:
                 pos = coords_to_pos(r, c)
                 moves = generate_rook_moves(board, pos, board[r, c])
+                if not moves:
+                    continue
                 _, to_pos = zip(*[decode_move(m) for m in moves])
                 if coords_to_pos(row, col) in to_pos:
                     return True
@@ -140,6 +142,8 @@ def is_attacked_by_cannon(board: np.ndarray, row: int, col: int, by_color: int) 
             if board[r, c] == cannon_piece:
                 pos = coords_to_pos(r, c)
                 moves = generate_cannon_moves(board, pos, board[r, c])
+                if not moves:
+                    continue
                 _, to_pos = zip(*[decode_move(m) for m in moves])
                 if coords_to_pos(row, col) in to_pos:
                     return True

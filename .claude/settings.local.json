@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"d:/code/project/chess/.venv/Scripts/python.exe\" -c:*)",
+      "Bash(\"d:/code/project/chess/.venv/Scripts/python.exe\" -c \"\nprint\\(''='' * 60\\)\nprint\\(''VERIFICATION TEST''\\)\nprint\\(''='' * 60\\)\n\n# Test 1: Logger\nprint\\(''[1/4] Testing logger...''\\)\nfrom src.utils.logger import get_logger, setup_logging\nsetup_logging\\(''test'', log_dir=''logs/test'', console=False, file=True\\)\nlogger = get_logger\\(''test''\\)\nlogger.info\\(''Logger test successful''\\)\nprint\\(''PASS: Logger works''\\)\n\n# Test 2: Background task manager\nprint\\(''[2/4] Testing background manager...''\\)\nimport time\nfrom src.utils.background import get_background_manager\nmanager = get_background_manager\\(\\)\n\ndef quick_test\\(\\):\n    return 42\n\ntask_id = manager.submit_task\\(''test_task'', quick_test\\)\ntime.sleep\\(0.2\\)\nstatus = manager.get_task_status\\(''test_task''\\)\nprint\\(f''PASS: Background task: status={status.status.value}, result={status.result}''\\)\n\n# Test 3: Engine with logging\nprint\\(''[3/4] Testing engine with logging...''\\)\nfrom src.engine.xiangqi_engine import create_engine\nengine = create_engine\\(\\)\nmoves = engine.get_legal_moves\\(\\)\nprint\\(f''PASS: Engine with logging: {len\\(moves\\)} legal moves''\\)\n\n# Test 4: Background engine\nprint\\(''[4/4] Testing background engine...''\\)\nfrom src.engine.background_engine import BackgroundEngine\nbg_engine = BackgroundEngine\\(\\)\ntask = bg_engine.search_background\\(2, ''search_test''\\)\ntime.sleep\\(0.5\\)\nprint\\(f''PASS: Background search: task_id={task}''\\)\n\nprint\\(''''\\)\nprint\\(''='' * 60\\)\nprint\\(''ALL TESTS PASSED!''\\)\nprint\\(''='' * 60\\)\n\")",
+      "Bash(\"d:/code/project/chess/.venv/Scripts/python.exe\" -m pytest:*)",
+      "Bash(\"d:/code/project/chess/.venv/Scripts/python.exe\" -m pytest tests/test_background.py -v)",
+      "Bash(python:*)"
+    ]
+  }
+}
