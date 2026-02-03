@@ -102,6 +102,28 @@ def main():
         help='Maximum number of samples to use (for quick testing)'
     )
 
+    # Data augmentation arguments
+    parser.add_argument(
+        '--augment',
+        action='store_true',
+        default=None,
+        help='Enable data augmentation (vertical flip)'
+    )
+
+    parser.add_argument(
+        '--no-augment',
+        action='store_true',
+        default=None,
+        help='Disable data augmentation'
+    )
+
+    parser.add_argument(
+        '--augment-prob',
+        type=float,
+        default=None,
+        help='Probability of applying augmentation per sample (0.0-1.0)'
+    )
+
     # Model architecture
     parser.add_argument(
         '--input-size',
@@ -212,6 +234,8 @@ def main():
         'log_level': 'INFO',
         'log_dir': 'logs/training',
         'max_samples': None,
+        'augment': False,
+        'augment_prob': 0.5,
     }
 
     for key, value in defaults.items():
@@ -242,6 +266,9 @@ def main():
     logger.info(f"Learning rate: {merged['learning_rate']}")
     logger.info(f"Loss function: {merged['loss']}")
     logger.info(f"Max samples: {merged['max_samples'] if merged['max_samples'] else 'All'}")
+    logger.info(f"Data augmentation: {'Enabled' if merged['augment'] else 'Disabled'}")
+    if merged['augment']:
+        logger.info(f"Augmentation probability: {merged['augment_prob']}")
     logger.info("=" * 60)
 
     print()
@@ -263,6 +290,8 @@ def main():
             validation_ratio=merged['validation_ratio'],
             loss_fn=merged['loss'],
             checkpoint_dir=checkpoint_dir,
+            augment=merged['augment'],
+            augment_prob=merged['augment_prob'],
             verbose=True
         )
 

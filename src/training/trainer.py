@@ -81,7 +81,9 @@ class Trainer:
         max_val_samples: Optional[int] = None,
         checkpoint_dir: Optional[str] = None,
         early_stopping_patience: int = 5,
-        verbose: bool = True
+        verbose: bool = True,
+        augment: bool = False,
+        augment_prob: float = 0.5
     ) -> dict:
         """
         Train the network.
@@ -97,6 +99,8 @@ class Trainer:
             checkpoint_dir: Directory to save checkpoints
             early_stopping_patience: Patience for early stopping
             verbose: Print progress
+            augment: Apply data augmentation (vertical flip)
+            augment_prob: Probability of applying augmentation per sample
 
         Returns:
             Training history dictionary
@@ -110,20 +114,26 @@ class Trainer:
             )
             self.logger.info(f"Split created: train={train_csv_path}, val={val_csv_path}")
 
-        # Create data loaders
+        # Create data loaders with augmentation
         train_loader = BatchDataLoader(
             train_csv_path,
             batch_size=batch_size,
             has_result_only=True,
-            max_samples=max_train_samples
+            max_samples=max_train_samples,
+            augment=augment,
+            augment_prob=augment_prob
         )
 
         val_loader = BatchDataLoader(
             val_csv_path,
             batch_size=batch_size,
             has_result_only=True,
-            max_samples=max_val_samples
+            max_samples=max_val_samples,
+            augment=False  # Don't augment validation data
         )
+
+        if augment:
+            self.logger.info(f"Data augmentation enabled: vertical flip (p={augment_prob})")
 
         # Load validation data into memory
         if verbose:
@@ -241,7 +251,9 @@ def train_model(
     validation_ratio: float = 0.1,
     loss_fn: str = 'mse',
     checkpoint_dir: Optional[str] = None,
-    verbose: bool = True
+    verbose: bool = True,
+    augment: bool = False,
+    augment_prob: float = 0.5
 ) -> NNUE:
     """
     Train NNUE model on CSV data.
@@ -259,6 +271,8 @@ def train_model(
         loss_fn: Loss function
         checkpoint_dir: Checkpoint directory
         verbose: Print progress
+        augment: Apply data augmentation (vertical flip)
+        augment_prob: Probability of applying augmentation per sample
 
     Returns:
         Trained NNUE network
@@ -281,7 +295,9 @@ def train_model(
         max_train_samples=max_samples,
         validation_ratio=validation_ratio,
         checkpoint_dir=checkpoint_dir,
-        verbose=verbose
+        verbose=verbose,
+        augment=augment,
+        augment_prob=augment_prob
     )
 
     # Save final model

@@ -91,7 +91,7 @@ class ChessDataset:
 
 class BatchDataLoader:
     """
-    Batch data loader for training.
+    Batch data loader for training with data augmentation support.
 
     Yields batches of (features, targets) for training.
     """
@@ -102,7 +102,9 @@ class BatchDataLoader:
         batch_size: int = 32,
         has_result_only: bool = True,
         max_samples: Optional[int] = None,
-        shuffle: bool = True
+        shuffle: bool = True,
+        augment: bool = False,
+        augment_prob: float = 0.5
     ):
         """
         Initialize data loader.
@@ -113,12 +115,22 @@ class BatchDataLoader:
             has_result_only: Only use samples with results
             max_samples: Maximum number of samples to use
             shuffle: Shuffle data
+            augment: Apply data augmentation (vertical flip)
+            augment_prob: Probability of augmentation per sample
         """
         self.csv_path = csv_path
         self.batch_size = batch_size
         self.has_result_only = has_result_only
         self.max_samples = max_samples
         self.shuffle = shuffle
+        self.augment = augment
+        self.augment_prob = augment_prob
+
+        # Import augmentation module if needed
+        if self.augment:
+            from .data_augmentation import DataAugmentor, flip_board_vertical
+            self.augmentor = DataAugmentor(vertical_flip_prob=augment_prob)
+            self.flip_board_vertical = flip_board_vertical
 
     def result_to_score(self, result: int, perspective: int = 1) -> float:
         """
@@ -177,6 +189,15 @@ class BatchDataLoader:
                 # Parse board and extract features
                 try:
                     board = parse_board(board_str)
+
+                    # Apply augmentation if enabled
+                    if self.augment and np.random.random() < self.augment_prob:
+                        import random
+                        # Flip board (Red <-> Black)
+                        board = self.flip_board_vertical(board)
+                        # Flip target score
+                        target = -target
+
                     features = extract_features(board)
                 except Exception as e:
                     # Skip invalid positions
