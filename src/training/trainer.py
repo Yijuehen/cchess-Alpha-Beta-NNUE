@@ -29,7 +29,9 @@ class Trainer:
         network: NNUE,
         learning_rate: float = 0.01,
         loss_fn: str = 'mse',
-        device: str = 'cpu'
+        device: str = 'cpu',
+        target_scale: float = 100.0,
+        max_grad_norm: float = 1.0
     ):
         """
         Initialize trainer.
@@ -39,11 +41,15 @@ class Trainer:
             learning_rate: Learning rate
             loss_fn: Loss function name
             device: Device to use ('cpu' or 'cuda')
+            target_scale: Scale factor for training targets
+            max_grad_norm: Maximum gradient norm for clipping
         """
         self.network = network
         self.trainer = NNUETrainer(network, learning_rate)
         self.loss_fn_name = loss_fn
         self.loss_fn, self.loss_grad_fn = get_loss_function(loss_fn)
+        self.target_scale = target_scale
+        self.max_grad_norm = max_grad_norm
         self.logger = get_logger("training")
 
         # Training history
@@ -53,7 +59,8 @@ class Trainer:
 
         self.logger.info(
             f"Initialized trainer: lr={learning_rate}, "
-            f"loss_fn={loss_fn}, device={device}"
+            f"loss_fn={loss_fn}, device={device}, "
+            f"target_scale={target_scale}, max_grad_norm={max_grad_norm}"
         )
 
     def compute_validation_loss(
@@ -114,14 +121,15 @@ class Trainer:
             )
             self.logger.info(f"Split created: train={train_csv_path}, val={val_csv_path}")
 
-        # Create data loaders with augmentation
+        # Create data loaders with augmentation and target scaling
         train_loader = BatchDataLoader(
             train_csv_path,
             batch_size=batch_size,
             has_result_only=True,
             max_samples=max_train_samples,
             augment=augment,
-            augment_prob=augment_prob
+            augment_prob=augment_prob,
+            target_scale=self.target_scale
         )
 
         val_loader = BatchDataLoader(
@@ -129,7 +137,8 @@ class Trainer:
             batch_size=min(batch_size, 16),  # Use smaller batch for validation
             has_result_only=True,
             max_samples=max_val_samples,
-            augment=False  # Don't augment validation data
+            augment=False,  # Don't augment validation data
+            target_scale=self.target_scale
         )
 
         if augment:
@@ -171,7 +180,11 @@ class Trainer:
             train_iterator = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}") if verbose else train_loader
 
             for batch_idx, (batch_features, batch_targets) in enumerate(train_iterator):
-                loss = self.trainer.update_step(batch_features, batch_targets)
+                loss = self.trainer.update_step(
+                    batch_features,
+                    batch_targets,
+                    max_grad_norm=self.max_grad_norm
+                )
                 epoch_losses.append(loss)
 
                 # Log batch progress periodically
@@ -245,6 +258,8 @@ def train_model(
     input_size: int = 1260,
     hidden_size: int = 256,
     learning_rate: float = 0.01,
+    target_scale: float = 100.0,
+    max_grad_norm: float = 1.0,
     epochs: int = 10,
     batch_size: int = 32,
     max_samples: Optional[int] = None,
@@ -264,6 +279,8 @@ def train_model(
         input_size: NNUE input size
         hidden_size: NNUE hidden size
         learning_rate: Learning rate
+        target_scale: Scale factor for targets (converts ±10000 to ±scale)
+        max_grad_norm: Maximum gradient norm for clipping
         epochs: Number of epochs
         batch_size: Batch size
         max_samples: Max samples to use (for quick testing)
@@ -279,9 +296,16 @@ def train_model(
     """
     # Create network
     network = NNUE(input_size=input_size, hidden_size=hidden_size)
+    network.target_scale = target_scale  # Store scale in network for inference
 
     # Create trainer
-    trainer = Trainer(network, learning_rate=learning_rate, loss_fn=loss_fn)
+    trainer = Trainer(
+        network,
+        learning_rate=learning_rate,
+        loss_fn=loss_fn,
+        target_scale=target_scale,
+        max_grad_norm=max_grad_norm
+    )
 
     # Create checkpoint directory
     if checkpoint_dir:
@@ -299,6 +323,9 @@ def train_model(
         augment=augment,
         augment_prob=augment_prob
     )
+
+    # Save final model
+    network.save(output_path)
 
     # Save final model
     network.save(output_path)

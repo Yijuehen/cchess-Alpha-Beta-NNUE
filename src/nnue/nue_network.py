@@ -134,6 +134,7 @@ class NNUE:
             'b2': self.b2,
             'input_size': self.input_size,
             'hidden_size': self.hidden_size,
+            'target_scale': getattr(self, 'target_scale', 1.0),  # For backward compatibility
         }
 
     def set_weights(self, weights: dict) -> None:
@@ -144,6 +145,7 @@ class NNUE:
         self.b2 = weights['b2']
         self.input_size = weights['input_size']
         self.hidden_size = weights['hidden_size']
+        self.target_scale = weights.get('target_scale', 1.0)  # Backward compatible
 
     def save(self, filepath: str) -> None:
         """
@@ -277,14 +279,16 @@ class NNUETrainer:
     def update_step(
         self,
         features: np.ndarray,
-        targets: np.ndarray
+        targets: np.ndarray,
+        max_grad_norm: float = 1.0
     ) -> float:
         """
-        Perform one gradient descent update step.
+        Perform one gradient descent update step with gradient clipping.
 
         Args:
             features: Input features of shape (batch_size, input_size)
             targets: Target scores
+            max_grad_norm: Maximum L2 norm for gradients (None = no clipping)
 
         Returns:
             Loss value
@@ -298,6 +302,19 @@ class NNUETrainer:
 
         # Backward pass
         dW1, db1, dW2, db2 = self.backward(features, loss_grad)
+
+        # Gradient clipping by L2 norm (prevents explosion)
+        if max_grad_norm is not None:
+            grad_norm = np.sqrt(
+                np.sum(dW1 ** 2) + np.sum(db1 ** 2) +
+                np.sum(dW2 ** 2) + np.sum(db2 ** 2)
+            )
+            if grad_norm > max_grad_norm:
+                scale = max_grad_norm / grad_norm
+                dW1 *= scale
+                db1 *= scale
+                dW2 *= scale
+                db2 *= scale
 
         # Update weights
         self.network.W1 -= self.learning_rate * dW1

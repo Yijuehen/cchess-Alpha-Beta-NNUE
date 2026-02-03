@@ -104,7 +104,8 @@ class BatchDataLoader:
         max_samples: Optional[int] = None,
         shuffle: bool = True,
         augment: bool = False,
-        augment_prob: float = 0.5
+        augment_prob: float = 0.5,
+        target_scale: float = 100.0
     ):
         """
         Initialize data loader.
@@ -117,6 +118,7 @@ class BatchDataLoader:
             shuffle: Shuffle data
             augment: Apply data augmentation (vertical flip)
             augment_prob: Probability of augmentation per sample
+            target_scale: Scale factor for targets (converts ±10000 to ±scale)
         """
         self.csv_path = csv_path
         self.batch_size = batch_size
@@ -125,6 +127,7 @@ class BatchDataLoader:
         self.shuffle = shuffle
         self.augment = augment
         self.augment_prob = augment_prob
+        self.target_scale = target_scale
 
         # Import augmentation module if needed
         if self.augment:
@@ -134,21 +137,25 @@ class BatchDataLoader:
 
     def result_to_score(self, result: int, perspective: int = 1) -> float:
         """
-        Convert result to evaluation score.
+        Convert result to evaluation score (scaled for stable training).
 
         Args:
             result: 0=Red wins, 1=Black wins, 2=Draw
             perspective: 1=Red, -1=Black
 
         Returns:
-            Score in centipawns (±10000 for win/loss, 0 for draw)
+            Score in centipawns, then scaled by target_scale
+            (e.g., with target_scale=100, returns ±100 instead of ±10000)
         """
         if result == 2:  # Draw
-            return 0.0
+            raw_score = 0.0
         elif result == 0:  # Red wins
-            return 10000.0 if perspective == 1 else -10000.0
+            raw_score = 10000.0 if perspective == 1 else -10000.0
         else:  # Black wins
-            return -10000.0 if perspective == 1 else 10000.0
+            raw_score = -10000.0 if perspective == 1 else 10000.0
+
+        # Scale target for stable training (prevents gradient explosion)
+        return raw_score / self.target_scale
 
     def __iter__(self) -> Iterator[Tuple[np.ndarray, np.ndarray]]:
         """

@@ -124,6 +124,20 @@ def main():
         help='Probability of applying augmentation per sample (0.0-1.0)'
     )
 
+    parser.add_argument(
+        '--target-scale',
+        type=float,
+        default=None,
+        help='Scale factor for targets (default: 100.0, converts ±10000 to ±100)'
+    )
+
+    parser.add_argument(
+        '--max-grad-norm',
+        type=float,
+        default=None,
+        help='Maximum gradient norm for clipping (default: 1.0)'
+    )
+
     # Model architecture
     parser.add_argument(
         '--input-size',
@@ -236,6 +250,8 @@ def main():
         'max_samples': None,
         'augment': False,
         'augment_prob': 0.5,
+        'target_scale': 100.0,
+        'max_grad_norm': 1.0,
     }
 
     for key, value in defaults.items():
@@ -284,6 +300,8 @@ def main():
             input_size=merged['input_size'],
             hidden_size=merged['hidden_size'],
             learning_rate=merged['learning_rate'],
+            target_scale=merged['target_scale'],
+            max_grad_norm=merged['max_grad_norm'],
             epochs=merged['epochs'],
             batch_size=merged['batch_size'],
             max_samples=merged['max_samples'],

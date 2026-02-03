@@ -13,6 +13,8 @@ training:
   epochs: 10
   batch_size: 32
   learning_rate: 0.01
+  target_scale: 100.0      # Scale targets to ±100 (from ±10000)
+  max_grad_norm: 1.0       # Clip gradient norm to 1.0
 
 # Data augmentation
 augmentation:
