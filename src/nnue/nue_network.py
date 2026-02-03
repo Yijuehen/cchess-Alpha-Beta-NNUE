@@ -264,7 +264,8 @@ class NNUETrainer:
 
         # Hidden layer gradients
         # dL/dhidden = dL/doutput @ W2.T * screlu'
-        dhidden = (loss_grad @ self.network.W2.T) * screlu_derivative(hidden_pre)  # (batch, hidden)
+        # Reshape loss_grad to (batch, 1) for proper matrix multiplication
+        dhidden = (loss_grad.reshape(-1, 1) @ self.network.W2.T) * screlu_derivative(hidden_pre)  # (batch, hidden)
 
         # Input gradients
         # dL/dW1 = features.T @ dhidden
