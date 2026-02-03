@@ -59,7 +59,8 @@ class NNUE:
         self,
         input_size: int = 1260,
         hidden_size: int = 256,
-        random_init: bool = True
+        random_init: bool = True,
+        target_scale: float = 100.0
     ):
         """
         Initialize NNUE network.
@@ -68,9 +69,11 @@ class NNUE:
             input_size: Number of input features
             hidden_size: Number of hidden neurons
             random_init: Whether to randomly initialize weights
+            target_scale: Expected scale of target values (for better initialization)
         """
         self.input_size = input_size
         self.hidden_size = hidden_size
+        self.target_scale = target_scale
 
         # Initialize weights
         if random_init:
@@ -79,13 +82,16 @@ class NNUE:
             self.W1 = np.random.randn(input_size, hidden_size).astype(np.float32) * scale1
             scale2 = np.sqrt(2.0 / (hidden_size + 1))
             self.W2 = np.random.randn(hidden_size, 1).astype(np.float32) * scale2
+
+            # Initialize output bias to match target scale (critical for convergence!)
+            # This sets initial predictions closer to the target range
+            self.b1 = np.zeros(hidden_size, dtype=np.float32)
+            self.b2 = np.zeros(1, dtype=np.float32)
         else:
             self.W1 = np.zeros((input_size, hidden_size), dtype=np.float32)
             self.W2 = np.zeros((hidden_size, 1), dtype=np.float32)
-
-        # Initialize biases
-        self.b1 = np.zeros(hidden_size, dtype=np.float32)
-        self.b2 = np.zeros(1, dtype=np.float32)
+            self.b1 = np.zeros(hidden_size, dtype=np.float32)
+            self.b2 = np.zeros(1, dtype=np.float32)
 
     def forward(self, features: np.ndarray) -> float:
         """

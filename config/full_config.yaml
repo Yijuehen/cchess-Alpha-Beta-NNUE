@@ -10,9 +10,9 @@ data:
 # Training parameters
 training:
   max_samples: null        # null = use all samples
-  epochs: 10
+  epochs: 50               # Increased epochs for better convergence
   batch_size: 32
-  learning_rate: 0.01
+  learning_rate: 0.1       # Increased for faster convergence
   target_scale: 100.0      # Scale targets to ±100 (from ±10000)
   max_grad_norm: 1.0       # Clip gradient norm to 1.0
 
