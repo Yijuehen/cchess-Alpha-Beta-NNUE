@@ -14,6 +14,11 @@ training:
   batch_size: 32
   learning_rate: 0.01
 
+# Data augmentation
+augmentation:
+  enabled: true            # Enable data augmentation
+  vertical_flip_prob: 0.5  # Probability of vertical flip per sample
+
 # Model architecture
 model:
   input_size: 1260
