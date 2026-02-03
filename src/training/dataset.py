@@ -220,12 +220,14 @@ class BatchDataLoader:
                 if self.max_samples and sample_count >= self.max_samples:
                     break
 
-        # Yield remaining samples
-        if batch_features:
+        # Yield final batch if it's complete
+        if batch_features and len(batch_features) >= self.batch_size:
             yield (
-                np.array(batch_features, dtype=np.float32),
-                np.array(batch_targets, dtype=np.float32)
+                np.array(batch_features[:self.batch_size], dtype=np.float32),
+                np.array(batch_targets[:self.batch_size], dtype=np.float32)
             )
+        # Note: We drop incomplete batches to avoid dimension mismatch
+        # If you get "no batches yielded" error, reduce batch_size or increase data
 
 
 def create_train_validation_split(

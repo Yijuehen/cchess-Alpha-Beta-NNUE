@@ -126,7 +126,7 @@ class Trainer:
 
         val_loader = BatchDataLoader(
             val_csv_path,
-            batch_size=batch_size,
+            batch_size=min(batch_size, 16),  # Use smaller batch for validation
             has_result_only=True,
             max_samples=max_val_samples,
             augment=False  # Don't augment validation data
@@ -152,7 +152,7 @@ class Trainer:
         else:
             val_features = None
             val_targets = None
-            self.logger.warning("No validation data available")
+            self.logger.warning("No validation data available - validation will be skipped")
 
         # Training loop
         self.logger.info("=" * 60)
